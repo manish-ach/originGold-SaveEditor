@@ -39,6 +39,14 @@ npm test
 To host it, build (`npm run build`) and upload `index.html`, `styles.css`,
 `favicon.svg`, `assets/` and `dist/` to any static host.
 
+### GitHub Pages
+
+In the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
+The workflow in `.github/workflows/deploy-pages.yml` installs dependencies, builds
+the editor, then deploys the static site on every push to `main`.
+You can also run it manually from the **Actions** tab. The deployment's
+`github-pages` environment links to the published site.
+
 ## How abilities are stored (Origin-specific)
 
 Vanilla Gen IV keeps an 8-bit ability ID in block A. Origin has 326 abilities, so it stores:
