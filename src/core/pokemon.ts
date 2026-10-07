@@ -193,6 +193,36 @@ export function patchPokemonStats(
   return result;
 }
 
+/** Change only this record's species, retaining its identity and training. */
+export function patchPokemonSpecies(record: Uint8Array, speciesId: number, name: string,
+  personal: {baseStats: readonly [number, number, number, number, number, number]; growthRate: number; growthThresholds: readonly number[]},
+  previousThresholds: readonly number[], genderRatio: number): Uint8Array {
+  const mon = decodePokemon(record);
+  if (!Number.isInteger(speciesId) || speciesId < 1 || speciesId > 1025) throw new EditorError('invalid-input', 'Choose a supported species.');
+  if (mon.isEgg) throw new EditorError('invalid-pokemon', 'Hatch the egg before changing species.');
+  if (mon.speciesId === speciesId) return Uint8Array.from(record);
+  let level = mon.party?.level ?? 1;
+  if (!mon.party) for (let n = 2; n <= 100; n++) if (mon.experience >= previousThresholds[n]!) level = n;
+  const {payload, a, b, c, pid} = unpack(record);
+  const dv = view(payload);
+  dv.setUint16(a, speciesId, true);
+  dv.setUint32(a + 8, experienceForLevel(level, personal.growthRate, personal.growthThresholds), true);
+  // Forms do not transfer between species. Gender follows the new species and existing PID.
+  payload[b + 24] = (payload[b + 24]! & 1) | (genderRatio === 255 ? 4 : genderRatio === 254 || (genderRatio !== 0 && (pid & 255) < genderRatio) ? 2 : 0);
+  if (!(dv.getUint32(b + 16, true) & 0x80000000)) payload.set(encodeName(name), c);
+  const result = Uint8Array.from(record), sum = checksum(payload);
+  view(result).setUint16(6, sum, true);
+  result.set(crypt(payload, sum), 8);
+  if (mon.party) {
+    const tailBytes = crypt(record.subarray(136), pid), tail = view(tailBytes);
+    const stats = calculateStats(personal.baseStats, mon.ivs, mon.evs, level, mon.nature, speciesId);
+    tail.setUint16(6, adjustCurrentHp(mon.party.currentHp, mon.party.stats.hp, stats.hp, speciesId), true);
+    STAT_KEYS.forEach((key, i) => tail.setUint16(8 + i * 2, stats[key], true));
+    result.set(crypt(tailBytes, pid), 136);
+  }
+  return result;
+}
+
 /** Origin's native override avoids changing PID, gender, nature or ability. */
 export function patchPokemonShiny(record: Uint8Array, shiny: boolean): Uint8Array {
   if (typeof shiny !== 'boolean') throw new EditorError('invalid-pokemon', 'Choose a shiny state.');

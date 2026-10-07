@@ -10,6 +10,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    try {
+      const saved = localStorage.getItem('ohg-editor-theme');
+      if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+    } catch {}
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -26,6 +32,7 @@
     </div>
     <div class="file-meta" id="file-meta" hidden></div>
     <div class="bar-actions">
+      <button type="button" class="btn ghost" id="theme-toggle" aria-label="Switch to dark mode" title="Switch to dark mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg></button>
       <button type="button" class="btn ghost desktop-only" id="undo" disabled title="Undo (⌘Z)">Undo</button>
       <label class="btn" for="file-input">Open<span class="desktop-only">&nbsp;save</span></label>
       <input type="file" id="file-input" accept=".sav,.dsv,application/octet-stream" hidden>

@@ -1,8 +1,13 @@
 import { EditorError } from './errors.js';
 import { readSave, patchGeneralRegion } from './save.js';
 import { decodeName } from './pokemon.js';
-/** Player profile inside the general block (same layout as vanilla HGSS, checked against an Origin save). */
-const NAME = 0x64, TID = 0x74, SID = 0x76, GENDER = 0x7c, LANGUAGE = 0x7d, BADGES = 0x7e, BADGES_2 = 0x83;
+/** Origin player profile inside the general block. Do not use vanilla US HGSS badge offsets.
+ * Origin ARM9 reads/writes badge IDs 0–7 at profile +0x1c and 8–15 at +0x1f.
+ * Profile starts at general +0x64, so the badge bytes are +0x80 and +0x83.
+ * Verified against native readers at 0x02029434/0x02029444 and setters at
+ * 0x02029460/0x0202946e in the English v4.0.3 rc5 ROM.
+ */
+const NAME = 0x64, TID = 0x74, SID = 0x76, GENDER = 0x7c, LANGUAGE = 0x7d, BADGES = 0x80, BADGES_2 = 0x83;
 export const COINS_OFFSET = 0x84, PLAY_TIME_OFFSET = 0x86;
 export const COINS_MAX = 50_000, HOURS_MAX = 999;
 export interface PlayTime { hours: number; minutes: number; seconds: number }

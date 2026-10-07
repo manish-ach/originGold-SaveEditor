@@ -101,3 +101,11 @@ mirrors and corrupt storage are rejected. In-game loading has not been verified 
 The compact PC browser uses original Gen IV/HGSS wallpapers from [PKHeX](https://github.com/kwsch/PKHeX/tree/master/PKHeX.Drawing.Misc/Resources/img/box), embedded for offline use. It reads the wallpaper assigned to each box; names appear in tooltips and accessibility labels instead of beneath sprites. See `assets/wallpapers/README.md` for credits.
 
 The Bag view uses one pocket icon selector, a scrollable item list, and a selected-item panel for quantities and removal. Add items from the footer; bulk quantity changes apply only to the current pocket.
+
+Badge state is read from the active save's Origin-specific bytes at general `+0x80` and `+0x83`. It is never inferred from party levels, story progress, or previous files. Neighboring profile bytes do not affect badges. The theme control uses sun/moon icons with accessible labels and tooltips.
+
+## Selected species and bulk bag edits
+
+The species selector changes only the selected party or PC Pokémon, retains identity and training, resets its form, and preserves its level while recalculating stats. Custom nicknames, moves and abilities are retained. Eggs must hatch first.
+
+“Add all items ×999” maximizes existing stacks and adds missing named items until each pocket is full, without changing key items. TMs/HMs use the supported maximum of 99. The result reports items that do not fit. Undo reverses the whole action.

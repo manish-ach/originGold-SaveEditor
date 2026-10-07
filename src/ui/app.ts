@@ -3,12 +3,12 @@ import { importSave } from '../core/save-import.js';
 import { containerLabel, wrapSave, type SaveContainer } from '../core/save-container.js';
 import { readSave, readStorage, patchBoxRecord, BOX_COUNT, BOX_CAPACITY, patchPartyRecord, addPartyRecord, removePartyRecord } from '../core/save.js';
 import {
-  decodePokemon, patchPokemonMoves, patchPokemonStats, patchPokemonShiny, patchPokemonPokerus,
+  decodePokemon, patchPokemonSpecies, patchPokemonMoves, patchPokemonStats, patchPokemonShiny, patchPokemonPokerus,
   patchPokemonOT, patchPokemonAbility, patchPokemonHeldItem, createPokemon, emptyPartyRecord, type DecodedPokemon, type PokerusStatus,
 } from '../core/pokemon.js';
 import { maxMovePp, validateMoveChoice } from '../core/catalog.js';
 import { loadBundledOriginData } from '../core/bundled-data.js';
-import { POCKETS, MONEY_MAX, readInventory, patchMoney, patchInventoryPocket, type PocketId, type ItemStack } from '../core/inventory.js';
+import { POCKETS, fillBag, MONEY_MAX, readInventory, patchMoney, patchInventoryPocket, type PocketId, type ItemStack } from '../core/inventory.js';
 import { mapStats, calculateStats, type StatValues, type StatKey } from '../core/stats.js';
 import { readTrainer, patchBadge, patchCoins, patchPlayTime, COINS_MAX, HOURS_MAX } from '../core/trainer.js';
 import { hiddenPowerType, ivsForHiddenPower, HIDDEN_POWER_TYPES } from '../core/hidden-power.js';
@@ -18,6 +18,32 @@ import { PC_WALLPAPERS } from './pc-wallpapers.js';
 import { BADGE_SPRITES } from './badge-sprites.js';
 import { combobox, type ComboChoice } from './combobox.js';
 import { artworkUrl, fallbackArtworkUrl, miniSpriteUrl, itemSpriteUrl, pcSprite, img } from './sprites.js';
+
+try {
+  const savedTheme = localStorage.getItem('ohg-editor-theme');
+  if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.dataset.theme = savedTheme;
+} catch {}
+const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+function updateThemeToggle(): void {
+  const dark = document.documentElement.dataset.theme === 'dark'
+    || (!document.documentElement.dataset.theme && systemTheme.matches);
+  themeToggle.replaceChildren(svg(dark
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>'));
+  themeToggle.title = `Switch to ${dark ? 'light' : 'dark'} mode`;
+  themeToggle.setAttribute('aria-label', `Switch to ${dark ? 'light' : 'dark'} mode`);
+}
+themeToggle.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark'
+    || (!document.documentElement.dataset.theme && systemTheme.matches);
+  const theme = dark ? 'light' : 'dark';
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('ohg-editor-theme', theme); } catch {}
+  updateThemeToggle();
+});
+systemTheme.addEventListener('change', updateThemeToggle);
+updateThemeToggle();
 
 const data = loadBundledOriginData();
 const NATURES = ['Hardy','Lonely','Brave','Adamant','Naughty','Bold','Docile','Relaxed','Impish','Lax','Timid','Hasty','Serious','Jolly','Naive','Modest','Mild','Quiet','Bashful','Rash','Calm','Gentle','Sassy','Careful','Quirky'];
@@ -137,7 +163,14 @@ function heroTile(mon: DecodedPokemon): HTMLElement {
   fact('Ability', ability?.name ?? `#${mon.ability}`);
   fact('Held item', itemName(mon.heldItem));
   if (mon.party) fact(view === 'pc' ? 'Calculated HP' : 'HP', `${mon.party.currentHp} / ${mon.party.stats.hp}`);
-  tile.append(facts);
+  tile.append(facts, combobox({id: 'change-species', label: 'Change this Pokémon’s species',
+    value: mon.speciesId, disabled: mon.isEgg, choices: [...data.catalog.species],
+    onSelect: id => editMon((record, current) => {
+      const next = data.catalog.getSpecies(id)!;
+      return patchPokemonSpecies(record, id, next.name, data.getPersonal(id, 0),
+        data.getPersonal(current.speciesId, current.form).growthThresholds, speciesInfo(id, 0)!.genderRatio);
+    }, `Species changed to ${speciesName(id)}`)}),
+    h('p', {class: 'note'}, 'Changes this Pokémon only. Keeps nickname, moves, ability, held item, IVs and EVs; resets form and keeps level.'));
   return tile;
 }
 
@@ -535,7 +568,15 @@ function bagTile(): HTMLElement {
     onSelect: id => { pendingId = id; qty.focus(); qty.select(); }});
   qty.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
   return h('section', {class: 'tile span-6 game-bag'},
-    h('div', {class: 'game-bag-title'}, h('h1', {}, 'Bag'), h('span', {}, def.label), h('span', {class: 'num'}, `${stacks.length} / ${def.capacity} slots`)),
+    h('div', {class: 'game-bag-title'}, h('h1', {}, 'Bag'), h('button', {type: 'button', class: 'btn small',
+      title: 'Fill available slots; key items unchanged. TMs/HMs use ×99.',
+      onclick: () => {
+        try {
+          const result = fillBag(session!.working, data.inventory);
+          commit(() => result.bytes, 'Bag filled');
+          toast(`Bag filled: ×999 (TMs/HMs ×99). ${result.omitted} items did not fit. Key items unchanged.`);
+        } catch (error) { toast(errorText(error), true); }
+      }}, 'Add all items ×999'), h('span', {}, def.label), h('span', {class: 'num'}, `${stacks.length} / ${def.capacity} slots`)),
     pockets, h('div', {class: 'game-bag-screen'}, list, detail),
     h('div', {class: 'game-bag-footer'}, h('div', {class: 'game-add'}, picker, qty, h('button', {type: 'button', class: 'btn primary', disabled: full, onclick: add}, 'Add item')),
       h('div', {class: 'game-bag-status'}, h('span', {}, `${def.capacity - stacks.length} slots free`),
