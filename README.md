@@ -109,3 +109,5 @@ Badge state is read from the active save's Origin-specific bytes at general `+0x
 The species selector changes only the selected party or PC Pokémon, retains identity and training, resets its form, and preserves its level while recalculating stats. Custom nicknames, moves and abilities are retained. Eggs must hatch first.
 
 “Add all items ×999” maximizes existing stacks and adds missing named items until each pocket is full, without changing key items. TMs/HMs use the supported maximum of 99. The result reports items that do not fit. Undo reverses the whole action.
+
+The add and species selectors include all 16 Hisuian forms listed in the guide. They store the native base species plus form 1, and use form-specific stats, abilities and learnsets. Form mappings and base stats were checked against the local rc5 ROM. In-game loading of newly created Hisuian Pokémon remains unverified.

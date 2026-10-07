@@ -1,3 +1,4 @@
+import { personalIndex } from './species-info.js';
 import { EditorError } from './errors.js';
 /** Origin v4.0.3 boxed Pokémon codec; see research-pokemon.md for native evidence. */
 export type PokerusStatus = 'none' | 'infected' | 'cured';
@@ -196,11 +197,12 @@ export function patchPokemonStats(
 /** Change only this record's species, retaining its identity and training. */
 export function patchPokemonSpecies(record: Uint8Array, speciesId: number, name: string,
   personal: {baseStats: readonly [number, number, number, number, number, number]; growthRate: number; growthThresholds: readonly number[]},
-  previousThresholds: readonly number[], genderRatio: number): Uint8Array {
+  previousThresholds: readonly number[], genderRatio: number, form = 0): Uint8Array {
   const mon = decodePokemon(record);
   if (!Number.isInteger(speciesId) || speciesId < 1 || speciesId > 1025) throw new EditorError('invalid-input', 'Choose a supported species.');
   if (mon.isEgg) throw new EditorError('invalid-pokemon', 'Hatch the egg before changing species.');
-  if (mon.speciesId === speciesId) return Uint8Array.from(record);
+  if (!Number.isInteger(form) || form < 0 || form > 31 || (form && personalIndex(speciesId, form) === speciesId)) throw new EditorError('invalid-input', 'Unsupported species form.');
+  if (mon.speciesId === speciesId && mon.form === form) return Uint8Array.from(record);
   let level = mon.party?.level ?? 1;
   if (!mon.party) for (let n = 2; n <= 100; n++) if (mon.experience >= previousThresholds[n]!) level = n;
   const {payload, a, b, c, pid} = unpack(record);
@@ -208,7 +210,7 @@ export function patchPokemonSpecies(record: Uint8Array, speciesId: number, name:
   dv.setUint16(a, speciesId, true);
   dv.setUint32(a + 8, experienceForLevel(level, personal.growthRate, personal.growthThresholds), true);
   // Forms do not transfer between species. Gender follows the new species and existing PID.
-  payload[b + 24] = (payload[b + 24]! & 1) | (genderRatio === 255 ? 4 : genderRatio === 254 || (genderRatio !== 0 && (pid & 255) < genderRatio) ? 2 : 0);
+  payload[b + 24] = (form << 3) | (payload[b + 24]! & 1) | (genderRatio === 255 ? 4 : genderRatio === 254 || (genderRatio !== 0 && (pid & 255) < genderRatio) ? 2 : 0);
   if (!(dv.getUint32(b + 16, true) & 0x80000000)) payload.set(encodeName(name), c);
   const result = Uint8Array.from(record), sum = checksum(payload);
   view(result).setUint16(6, sum, true);
@@ -318,7 +320,7 @@ function encodeName(name: string): Uint8Array {
 }
 
 export interface NewPokemon {
-  speciesId: number; level: number; nature: number; shiny: boolean;
+  speciesId: number; form?: number; level: number; nature: number; shiny: boolean;
   gender: 'male' | 'female' | 'genderless';
   ability: number; abilitySlot: number;
   ivs: StatValues; moves: readonly { id: number; pp: number }[]; name: string;
@@ -338,8 +340,10 @@ export function createPokemon(template: Uint8Array, spec: NewPokemon, random: ()
   integer(spec.speciesId, 1, 1025, 'Species'); integer(spec.level, 1, 100, 'Level'); integer(spec.nature, 0, 24, 'Nature');
   integer(spec.ability, 1, ABILITY_MAX, 'Ability'); integer(spec.abilitySlot, 0, 2, 'Ability slot');
   validateStatValues(spec.ivs, 'IV');
-  if (!spec.moves.length || spec.moves.length > 4) throw new EditorError('invalid-input', 'Choose one to four moves.');
+  if (!Array.isArray(spec.moves) || spec.moves.length > 4) throw new EditorError('invalid-input', 'Choose up to four moves.');
   for (const m of spec.moves) { integer(m.id, 1, 920, 'Move'); integer(m.pp, 0, 255, 'PP'); }
+  const form = spec.form ?? 0;
+  if (!Number.isInteger(form) || form < 0 || form > 31 || (form && personalIndex(spec.speciesId, form) === spec.speciesId)) throw new EditorError('invalid-input', 'Unsupported species form.');
   const r = spec.genderRatio;
   const allowed = r === 255 ? 'genderless' : r === 254 ? 'female' : r === 0 ? 'male' : undefined;
   if (allowed ? spec.gender !== allowed : spec.gender === 'genderless') throw new EditorError('invalid-input', 'That gender is not possible for this species.');
@@ -371,7 +375,7 @@ export function createPokemon(template: Uint8Array, spec: NewPokemon, random: ()
   STAT_KEYS.forEach((key, i) => { ivWord |= spec.ivs[key] << (i * 5); });
   data.setUint32(b + 16, ivWord >>> 0, true);
   data.setUint32(b + 20, spec.shiny ? 0x80000000 : 0, true);
-  payload[b + 24] = spec.gender === 'female' ? 2 : spec.gender === 'genderless' ? 4 : 0;
+  payload[b + 24] = (form << 3) | (spec.gender === 'female' ? 2 : spec.gender === 'genderless' ? 4 : 0);
   data.setUint16(b + 26, spec.ability, true);
   payload.set(source.payload.subarray(source.b + 28, source.b + 32), b + 28);
   // Block C

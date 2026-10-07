@@ -50,3 +50,17 @@ export function possibleGenders(ratio: number): Gender[] {
   if (ratio === 0) return ['male'];
   return ['male', 'female'];
 }
+
+/** Guide names indexed by native personal-data row; never store these rows as species IDs. */
+const HISUI_NAMES: Record<number, string> = {"1347": "Hisuian Growlithe", "1348": "Hisuian Arcanine", "1349": "Hisuian Voltorb", "1350": "Hisuian Electrode", "1354": "Hisuian Typhlosion", "1356": "Hisuian Qwilfish", "1357": "Hisuian Sneasel", "1360": "Hisuian Samurott", "1361": "Hisuian Lilligant", "1363": "Hisuian Zorua", "1364": "Hisuian Zoroark", "1365": "Hisuian Braviary", "1366": "Hisuian Sliggoo", "1367": "Hisuian Goodra", "1368": "Hisuian Avalugg", "1369": "Hisuian Decidueye"};
+export const HISUI_CHOICES = bundledReference.payload.forms.flatMap(([species, index, form]) =>
+  HISUI_NAMES[index!] ? [{id:index!, name:HISUI_NAMES[index!]!, speciesId:species!, form:form!}] : []);
+export function speciesSelection(id: number): {speciesId: number; form: number} {
+  return HISUI_CHOICES.find(choice => choice.id === id) ?? {speciesId:id, form:0};
+}
+export function selectionId(speciesId: number, form: number): number {
+  return HISUI_CHOICES.find(choice => choice.speciesId === speciesId && choice.form === form)?.id ?? speciesId;
+}
+export function hisuiName(speciesId: number, form: number): string | undefined {
+  return HISUI_CHOICES.find(choice => choice.speciesId === speciesId && choice.form === form)?.name;
+}

@@ -12,7 +12,7 @@ import { POCKETS, fillBag, MONEY_MAX, readInventory, patchMoney, patchInventoryP
 import { mapStats, calculateStats, type StatValues, type StatKey } from '../core/stats.js';
 import { readTrainer, patchBadge, patchCoins, patchPlayTime, COINS_MAX, HOURS_MAX } from '../core/trainer.js';
 import { hiddenPowerType, ivsForHiddenPower, HIDDEN_POWER_TYPES } from '../core/hidden-power.js';
-import { speciesInfo, typeName, ABILITIES, getAbility, TYPE_NAMES, defaultMoves, possibleGenders, type Gender } from '../core/species-info.js';
+import { HISUI_CHOICES, speciesSelection, selectionId, hisuiName, speciesInfo, typeName, ABILITIES, getAbility, TYPE_NAMES, defaultMoves, possibleGenders, type Gender } from '../core/species-info.js';
 import { h, svg } from './dom.js';
 import { PC_WALLPAPERS } from './pc-wallpapers.js';
 import { BADGE_SPRITES } from './badge-sprites.js';
@@ -82,7 +82,7 @@ function toast(text: string, error = false): void {
   toastTimer = window.setTimeout(() => { toastNode.className = 'toast'; }, error ? 4200 : 2000);
 }
 const errorText = (error: unknown) => editorErrorMessage(error, id => data.inventory.getItem(id)?.name);
-const speciesName = (id: number) => data.catalog.getSpecies(id)?.name ?? `Species #${id}`;
+const speciesName = (id: number, form = 0) => { const choice = speciesSelection(id); return hisuiName(choice.speciesId, form || choice.form) ?? data.catalog.getSpecies(choice.speciesId)?.name ?? `Species #${id}`; };
 const itemName = (id: number) => id === 0 ? 'None' : data.inventory.getItem(id)?.name ?? `Item #${id}`;
 const typeKey = (id: number) => typeName(id).toLowerCase();
 function typeChip(id: number, small = false): HTMLElement {
@@ -140,7 +140,7 @@ function numberInput(attrs: {id: string; value: number; min: number; max: number
 /* ---------- tiles ---------- */
 function heroTile(mon: DecodedPokemon): HTMLElement {
   const info = speciesInfo(mon.speciesId, mon.form);
-  const name = mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId);
+  const name = mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId, mon.form);
   const types = info ? [...new Set(info.types)] : [];
   const tile = h('section', {class: 'tile hero span-2 row-2', style: types[0] !== undefined ? `--tint: var(--t-${typeKey(types[0])})` : undefined});
   const star = h('button', {type: 'button', class: 'star', 'aria-pressed': String(mon.shiny), 'aria-label': 'Shiny',
@@ -148,13 +148,14 @@ function heroTile(mon: DecodedPokemon): HTMLElement {
     disabled: mon.isEgg || (mon.naturalShiny && mon.shiny),
     onclick: () => editMon(r => patchPokemonShiny(r, !mon.shiny), mon.shiny ? 'No longer shiny' : 'Now shiny')},
   svg('<svg viewBox="0 0 16 16"><path d="M8 1.5l1.6 4.3 4.4.3-3.4 2.8 1.1 4.4L8 10.9l-3.7 2.4 1.1-4.4L2 6.1l4.4-.3z" fill="currentColor"/></svg>'));
-  const species = mon.isEgg ? '' : mon.nickname && mon.nickname !== speciesName(mon.speciesId) ? speciesName(mon.speciesId) : `No. ${String(mon.speciesId).padStart(4, '0')}`;
+  const species = mon.isEgg ? '' : mon.nickname && mon.nickname !== speciesName(mon.speciesId, mon.form) ? speciesName(mon.speciesId, mon.form) : `No. ${String(mon.speciesId).padStart(4, '0')}`;
   tile.append(h('div', {class: 'hero-top'},
     h('div', {}, h('h1', {class: 'hero-name'}, name), h('div', {class: 'hero-species'}, species)),
     h('div', {style: 'display:flex;gap:10px;align-items:center'}, mon.party ? h('span', {class: 'hero-lv'}, `Lv ${mon.party.level}`) : null, star)));
   const art = h('div', {class: 'hero-art'});
   if (mon.isEgg) art.append(h('span', {class: 'missing'}, 'Egg — hatch it to edit'));
-  else art.append(img(artworkUrl(mon.speciesId, mon.shiny), speciesName(mon.speciesId), '', fallbackArtworkUrl(mon.speciesId, mon.shiny)));
+  else if (hisuiName(mon.speciesId, mon.form)) art.append(h('span', {class: 'missing'}, hisuiName(mon.speciesId, mon.form)!));
+  else art.append(img(artworkUrl(mon.speciesId, mon.shiny), speciesName(mon.speciesId, mon.form), '', fallbackArtworkUrl(mon.speciesId, mon.shiny)));
   tile.append(art, h('div', {class: 'types'}, ...types.map(t => typeChip(t))));
   const ability = getAbility(mon.ability);
   const facts = h('dl', {class: 'hero-facts'});
@@ -164,11 +165,11 @@ function heroTile(mon: DecodedPokemon): HTMLElement {
   fact('Held item', itemName(mon.heldItem));
   if (mon.party) fact(view === 'pc' ? 'Calculated HP' : 'HP', `${mon.party.currentHp} / ${mon.party.stats.hp}`);
   tile.append(facts, combobox({id: 'change-species', label: 'Change this Pokémon’s species',
-    value: mon.speciesId, disabled: mon.isEgg, choices: [...data.catalog.species],
+    value: selectionId(mon.speciesId, mon.form), disabled: mon.isEgg, choices: [...data.catalog.species, ...HISUI_CHOICES],
     onSelect: id => editMon((record, current) => {
-      const next = data.catalog.getSpecies(id)!;
-      return patchPokemonSpecies(record, id, next.name, data.getPersonal(id, 0),
-        data.getPersonal(current.speciesId, current.form).growthThresholds, speciesInfo(id, 0)!.genderRatio);
+      const next = speciesSelection(id);
+      return patchPokemonSpecies(record, next.speciesId, data.catalog.getSpecies(next.speciesId)!.name, data.getPersonal(next.speciesId, next.form),
+        data.getPersonal(current.speciesId, current.form).growthThresholds, speciesInfo(next.speciesId, next.form)!.genderRatio, next.form);
     }, `Species changed to ${speciesName(id)}`)}),
     h('p', {class: 'note'}, 'Changes this Pokémon only. Keeps nickname, moves, ability, held item, IVs and EVs; resets form and keeps level.'));
   return tile;
@@ -371,7 +372,7 @@ function infoTile(mon: DecodedPokemon, partyCount: number): HTMLElement {
   const remove = h('button', {type: 'button', class: 'btn small danger', disabled: view !== 'pc' && partyCount <= 1,
     title: view !== 'pc' && partyCount <= 1 ? 'The party needs at least one Pokémon' : undefined,
     onclick: () => {
-      const name = mon.nickname ?? speciesName(mon.speciesId);
+      const name = mon.nickname ?? speciesName(mon.speciesId, mon.form);
       if (view === 'pc') {
         if (confirm(`Remove ${name} from this PC slot? You can undo this.`)) commit(bytes => patchBoxRecord(bytes, pcBox, pcSlot, emptyPartyRecord().slice(0, 136)), `${name} removed from PC`);
         return;
@@ -417,11 +418,11 @@ function trainerOverview(party: DecodedPokemon[], badges: [number, number]): HTM
     h('div', {class: 'tc-party'}, ...party.map((mon, slot) => {
       const hp = mon.party;
       return h('button', {type: 'button', class: 'tc-member', onclick: () => { selected = slot; setView('pokemon'); },
-        'aria-label': `Edit party slot ${slot + 1}: ${mon.isEgg ? 'Egg' : speciesName(mon.speciesId)}`},
+        'aria-label': `Edit party slot ${slot + 1}: ${mon.isEgg ? 'Egg' : speciesName(mon.speciesId, mon.form)}`},
         mon.isEgg ? h('span', {class: 'tc-egg'}, 'Egg') : img(miniSpriteUrl(mon.speciesId, mon.shiny), '', 'tc-member-sprite'),
         h('div', {class: 'tc-member-info'},
-          h('strong', {}, mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId)),
-          h('span', {class: 'note'}, mon.isEgg ? 'Waiting to hatch' : `${speciesName(mon.speciesId)} · Lv. ${hp?.level ?? '—'}`),
+          h('strong', {}, mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId, mon.form)),
+          h('span', {class: 'note'}, mon.isEgg ? 'Waiting to hatch' : `${speciesName(mon.speciesId, mon.form)} · Lv. ${hp?.level ?? '—'}`),
           !mon.isEgg && hp ? h('span', {class: 'tc-hp num'}, `HP ${hp.currentHp} / ${hp.stats.hp}`) : null));
     })));
 }
@@ -501,7 +502,7 @@ function playTimeTile(): HTMLElement {
 function saveTile(party: DecodedPokemon[]): HTMLElement {
   const s = session!;
   const save = readSave(s.working);
-  const strip = h('div', {class: 'party-strip'}, ...party.map((mon, slot) => h('button', {type: 'button', title: mon.nickname ?? speciesName(mon.speciesId),
+  const strip = h('div', {class: 'party-strip'}, ...party.map((mon, slot) => h('button', {type: 'button', title: mon.nickname ?? speciesName(mon.speciesId, mon.form),
     onclick: () => { selected = slot; setView('pokemon'); }}, mon.isEgg ? 'Egg' : img(miniSpriteUrl(mon.speciesId, mon.shiny), ''))));
   return h('section', {class: 'tile span-2 glow glow-tr'}, h('h2', {}, 'Save file'),
     strip,
@@ -587,7 +588,7 @@ function bagTile(): HTMLElement {
 function partyRail(party: DecodedPokemon[]): HTMLElement {
   const rail = h('nav', {class: 'party', 'aria-label': 'Party'}, h('div', {class: 'party-label'}, h('span', {}, 'Party'), h('span', {class: 'num'}, `${party.length}/6`)));
   party.forEach((mon, slot) => {
-    const name = mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId);
+    const name = mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId, mon.form);
     rail.append(h('button', {type: 'button', class: 'slot', 'aria-current': String(slot === selected), onclick: () => { selected = slot; render(); }},
       mon.isEgg ? h('span', {class: 'egg'}, 'Egg') : img(miniSpriteUrl(mon.speciesId, mon.shiny), ''),
       h('span', {}, h('span', {class: 'slot-name'}, name), h('span', {class: 'slot-sub'}, mon.party ? `Lv ${mon.party.level}` : ''))));
@@ -625,7 +626,7 @@ function renderPC(bento: HTMLElement): void {
         const mon = decodePokemon(record), empty = !mon.speciesId;
         if (!empty) occupied++;
         grid.append(h('button', {type: 'button', class: `pc-slot${slot === pcSlot ? ' selected' : ''}${empty ? ' empty' : ''}`,
-          'aria-pressed': String(slot === pcSlot), title: `Slot ${slot + 1}: ${empty ? 'Empty' : mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId)}`, 'aria-label': `Slot ${slot + 1}: ${empty ? 'Empty' : mon.isEgg ? 'Egg' : speciesName(mon.speciesId)}`,
+          'aria-pressed': String(slot === pcSlot), title: `Slot ${slot + 1}: ${empty ? 'Empty' : mon.isEgg ? 'Egg' : mon.nickname ?? speciesName(mon.speciesId, mon.form)}`, 'aria-label': `Slot ${slot + 1}: ${empty ? 'Empty' : mon.isEgg ? 'Egg' : speciesName(mon.speciesId, mon.form)}`,
           onclick: () => { pcSlot = slot; render(); }}, empty ? null : mon.isEgg ? h('span', {class: 'pc-egg'}, 'Egg') : pcSprite(mon.speciesId, mon.shiny)));
       } catch {
         grid.append(h('button', {type: 'button', class: 'pc-slot', disabled: true, title: 'Record has an invalid checksum'}, 'Unreadable'));
@@ -716,7 +717,7 @@ function abilitySlots(info: NonNullable<ReturnType<typeof speciesInfo>>): {slot:
   return out;
 }
 function setSpecies(id: number): void {
-  const info = speciesInfo(id, 0);
+  const info = speciesInfo(speciesSelection(id).speciesId, speciesSelection(id).form);
   const genders = info ? possibleGenders(info.genderRatio) : ['male' as Gender];
   draft = {...draft, species: id, slot: 0, gender: genders.includes(draft.gender) ? draft.gender : genders[0]!};
 }
@@ -728,12 +729,12 @@ function openAddDialog(): void {
   addDialog.querySelector<HTMLInputElement>('#add-species')?.focus();
 }
 function renderAddDialog(): void {
-  const info = speciesInfo(draft.species, 0);
+  const info = speciesInfo(speciesSelection(draft.species).speciesId, speciesSelection(draft.species).form);
   const name = speciesName(draft.species);
   const moves = info ? defaultMoves(info, draft.level) : [];
   const slots = info ? abilitySlots(info) : [];
   const genders = info ? possibleGenders(info.genderRatio) : [];
-  speciesChoices ??= data.catalog.species.map(sp => ({id: sp.id, name: sp.name, icon: () => img(miniSpriteUrl(sp.id, false), ''),
+  speciesChoices ??= [...data.catalog.species, ...HISUI_CHOICES].map(sp => ({id: sp.id, name: sp.name, icon: () => img(miniSpriteUrl(sp.id, false), ''),
     meta: () => `#${String(sp.id).padStart(4, '0')}`}));
 
   const types = info ? [...new Set(info.types)] : [];
@@ -777,18 +778,18 @@ function renderAddDialog(): void {
     h('div', {class: 'field'}, h('span', {}, 'Gender'), gender),
     h('div', {class: 'inline', style: 'justify-content:space-between;align-items:center'}, ivs, h('label', {class: 'check'}, shiny, 'Shiny')));
 
-  const add = h('button', {type: 'button', class: 'btn primary', disabled: !info || !moves.length, onclick: () => confirmAdd()}, view === 'pc' ? 'Add to PC' : 'Add to party');
+  const add = h('button', {type: 'button', class: 'btn primary', disabled: !info, onclick: () => confirmAdd()}, view === 'pc' ? 'Add to PC' : 'Add to party');
   addDialog.replaceChildren(
     h('div', {class: 'sheet-head'}, h('h2', {id: 'add-title'}, 'Add Pokémon'),
       h('button', {type: 'button', class: 'x', 'aria-label': 'Close', onclick: () => addDialog.close()},
         svg('<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'))),
     h('div', {class: 'sheet-body'}, preview, form),
-    h('div', {class: 'sheet-foot'}, h('p', {class: 'note'}, moves.length ? 'Starts with its level-up moves; edit them after adding.' : 'No level-up moves at this level.'),
+    h('div', {class: 'sheet-foot'}, h('p', {class: 'note'}, moves.length ? 'Starts with its level-up moves; edit them after adding.' : 'Starts with empty move slots. Choose its moves after adding, before using it in battle.'),
       h('button', {type: 'button', class: 'btn', onclick: () => addDialog.close()}, 'Cancel'), add));
 }
 function confirmAdd(): void {
   if (!session) return;
-  const info = speciesInfo(draft.species, 0);
+  const info = speciesInfo(speciesSelection(draft.species).speciesId, speciesSelection(draft.species).form);
   if (!info) return;
   const slot = abilitySlots(info).find(s => s.slot === draft.slot) ?? abilitySlots(info)[0]!;
   const ivs: StatValues = mapStats(() => draft.perfect ? 31 : Math.floor(Math.random() * 32));
@@ -798,9 +799,9 @@ function confirmAdd(): void {
     const save = readSave(bytes);
     const template = save.partyRecords.find(r => !decodePokemon(r).isEgg);
     if (!template) throw new Error('No template');
-    const record = createPokemon(template, {speciesId: draft.species, level: draft.level, nature: draft.nature, shiny: draft.shiny, gender: draft.gender,
-      ability: slot.id, abilitySlot: slot.slot, ivs, moves, name, genderRatio: info.genderRatio, baseFriendship: info.baseFriendship,
-      personal: data.getPersonal(draft.species, 0)});
+    const record = createPokemon(template, {speciesId: speciesSelection(draft.species).speciesId, form: speciesSelection(draft.species).form, level: draft.level, nature: draft.nature, shiny: draft.shiny, gender: draft.gender,
+      ability: slot.id, abilitySlot: slot.slot, ivs, moves, name: data.catalog.getSpecies(speciesSelection(draft.species).speciesId)!.name, genderRatio: info.genderRatio, baseFriendship: info.baseFriendship,
+      personal: data.getPersonal(speciesSelection(draft.species).speciesId, speciesSelection(draft.species).form)});
     if (view === 'pc') {
       if (decodePokemon(readStorage(bytes).boxes[pcBox]![pcSlot]!).speciesId) throw new Error('Choose an empty PC slot first.');
       return patchBoxRecord(bytes, pcBox, pcSlot, record.slice(0, 136));
