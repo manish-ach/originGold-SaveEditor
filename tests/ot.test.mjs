@@ -1,10 +1,10 @@
-import test from 'node:test';
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {fixture as save} from './fixture.mjs';
+const test = (name, fn) => nodeTest(name, {skip: !save}, fn);
 import {readSave,readStorage,patchPartyRecord,patchBoxRecord} from '../dist/core/save.js';
 import {decodePokemon,patchPokemonOT} from '../dist/core/pokemon.js';
-const save=new Uint8Array(readFileSync(new URL('../../og/Origin_HeartGold_v4.0.3_EN_v1.0.0-rc5.sav',import.meta.url)));
-const record=readSave(save).partyRecords[0];
+const record=save && readSave(save).partyRecords[0];
 for(const size of [136,236])test(`OT edits round-trip without changing other Pokémon fields (${size} bytes)`,()=>{
  const input=record.slice(0,size), before=decodePokemon(input);
  const edited=patchPokemonOT(input,{name:'Ash',tid:12345,sid:54321}),after=decodePokemon(edited);

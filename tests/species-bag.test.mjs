@@ -89,3 +89,15 @@ test('Iron Moth can be created without a level-up learnset', async () => {
  const save=patchPartyRecord(fixture(),0,record);
  assert.equal(decodePokemon(readSave(save).partyRecords[0]).speciesId,994);
 });
+
+test('gender changes preserve every other decoded field and party tail', async () => {
+ const {patchPokemonGender} = await import('../dist/core/pokemon.js');
+ for(const size of [136,236]) {
+  const record=pokemon().slice(0,size), before=decodePokemon(record);
+  const changed=patchPokemonGender(record,'female'), after=decodePokemon(changed);
+  assert.equal(after.gender,'female');assert.deepEqual({...after,gender:before.gender},before);
+  assert.deepEqual(changed.slice(136),record.slice(136));
+  assert.deepEqual(patchPokemonGender(changed,'male'),record);
+  assert.throws(()=>patchPokemonGender(record,'genderless'));
+ }
+});

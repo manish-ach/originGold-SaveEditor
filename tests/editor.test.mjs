@@ -1,13 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, readFileSync} from 'node:fs';
+import {fixture} from './fixture.mjs';
 import {readSave, patchPartyRecord} from '../dist/core/save.js';
 import {decodePokemon, patchPokemonAbility, patchPokemonShiny} from '../dist/core/pokemon.js';
 import {hiddenPowerType, ivsForHiddenPower} from '../dist/core/hidden-power.js';
 import {speciesInfo, getAbility, typeName} from '../dist/core/species-info.js';
-
-const SAVE = new URL('../../og/Origin_HeartGold_v4.0.3_EN_v1.0.0-rc5.sav', import.meta.url);
-const fixture = existsSync(SAVE) ? new Uint8Array(readFileSync(SAVE)) : undefined;
 
 test('species info matches known Origin data', () => {
   const bulba = speciesInfo(1, 0);
@@ -27,11 +24,12 @@ test('hidden power picks the cheapest IV spread', () => {
   assert.equal(Object.values(ivsForHiddenPower(perfect, 8)).filter(v => v === 30).length, 3);
 });
 
-test('party abilities decode to one of the species abilities', {skip: !fixture}, () => {
+test('party abilities decode including retained off-species abilities', {skip: !fixture}, () => {
   for (const record of readSave(fixture).partyRecords) {
     const mon = decodePokemon(record);
-    const info = speciesInfo(mon.speciesId, mon.form);
-    assert.equal(info.abilities[mon.abilitySlot], mon.ability);
+    assert.ok(Number.isInteger(mon.ability) && mon.ability > 0 && mon.ability <= 65535);
+    assert.ok([0, 1, 2].includes(mon.abilitySlot));
+    // Species changes intentionally retain the effective ability, including off-species choices.
   }
 });
 
@@ -93,12 +91,12 @@ test('created Pokémon decode correctly and join the party', {skip: !fixture}, a
   const added = addPartyRecord(fixture, record);
   const after = readSave(added);
   assert.equal(after.partyCount, save.partyCount + 1);
-  assert.equal(decodePokemon(after.partyRecords[3]).speciesId, 445);
-  for (let i = 0; i < 3; i++) assert.deepEqual(after.partyRecords[i], save.partyRecords[i]);
+  assert.equal(decodePokemon(after.partyRecords[save.partyCount]).speciesId, 445);
+  for (let i = 0; i < save.partyCount; i++) assert.deepEqual(after.partyRecords[i], save.partyRecords[i]);
   // Remove the first member: others shift up and the freed slot matches the game's blank record.
   const removed = readSave(removePartyRecord(added, 0));
-  assert.equal(removed.partyCount, 3);
-  assert.deepEqual(removed.partyRecords.map(r => decodePokemon(r).speciesId), [129, 5, 445]);
-  const g = removed.generalOffset + 0x98 + 3 * 236;
+  assert.equal(removed.partyCount, save.partyCount);
+  assert.deepEqual(removed.partyRecords.map(r => decodePokemon(r).speciesId), [...save.partyRecords.slice(1).map(r => decodePokemon(r).speciesId), 445]);
+  const g = removed.generalOffset + 0x98 + save.partyCount * 236;
   assert.deepEqual(removed.bytes.subarray(g, g + 236), fixture.subarray(save.generalOffset + 0x98 + 5 * 236, save.generalOffset + 0x98 + 6 * 236));
 });

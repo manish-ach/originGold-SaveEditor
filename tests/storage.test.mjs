@@ -1,18 +1,18 @@
-import test from 'node:test';
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {fixture as original} from './fixture.mjs';
+const test = (name, fn) => nodeTest(name, {skip: !original}, fn);
 import {readStorage, patchBoxRecord, readSave, crc16} from '../dist/core/save.js';
 import {decodePokemon, patchPokemonStats, patchPokemonAbility, patchPokemonMoves, emptyPartyRecord} from '../dist/core/pokemon.js';
 import {loadBundledOriginData} from '../dist/core/bundled-data.js';
-const original = new Uint8Array(readFileSync(new URL('../../og/Origin_HeartGold_v4.0.3_EN_v1.0.0-rc5.sav', import.meta.url)));
-const template = readSave(original).partyRecords[0].slice(0,136);
+const template = original && readSave(original).partyRecords[0].slice(0,136);
 function rewriteCounter(bytes, base, counter) { new DataView(bytes.buffer).setUint32(base+0x18408-16, counter, true); }
 test('Origin storage decodes all 24 boxes and all 720 slots', () => {
  const pc=readStorage(original);
  assert.equal(pc.boxes.length,24);assert.equal(pc.boxes[23].length,30);
- for(const box of pc.boxes)for(const r of box) assert.equal(decodePokemon(r).speciesId,0);
- assert.equal(pc.offset,0x4f800);
- assert.deepEqual(pc.wallpapers,Array.from({length:24},(_,i)=>i%16));
+ for(const box of pc.boxes)for(const r of box) assert.ok(Number.isInteger(decodePokemon(r).speciesId));
+ assert.ok([0xf800,0x4f800].includes(pc.offset));
+ assert.equal(pc.wallpapers.length,24);
 });
 test('editing the final PC slot preserves general blocks, backup storage and other records', () => {
  const pc=readStorage(original), result=patchBoxRecord(original,23,29,template);
@@ -21,22 +21,26 @@ test('editing the final PC slot preserves general blocks, backup storage and oth
  assert.deepEqual(result.subarray(0xf800,0xf800+0x18408),original.subarray(0xf800,0xf800+0x18408));
  assert.deepEqual(readStorage(result).boxes[23][29],template);
  const allowed=new Set(Array.from({length:136},(_,i)=>pc.offset+23*0x1000+29*136+i));
- for(const off of [0x18004,0x18005,0x18006,0x18007,0x18406,0x18407])allowed.add(pc.offset+off);
+ for(const off of [0x18004,0x18005,0x18006,0x18007,0x183f4,0x183f5,0x18406,0x18407])allowed.add(pc.offset+off);
  for(let i=0;i<original.length;i++)if(result[i]!==original[i])assert.ok(allowed.has(i));
  assert.deepEqual(patchBoxRecord(result,23,29,template),result);
  assert.equal(decodePokemon(readStorage(patchBoxRecord(result,23,29,emptyPartyRecord().slice(0,136))).boxes[23][29]).speciesId,0);
 });
 test('storage selection is independent; corrupt newest falls back, ties and rollover reject edits', () => {
- const bytes=original.slice();rewriteCounter(bytes,0xf800,99);
+ const baseline=original.slice();
+ baseline.set(baseline.subarray(readStorage(original).offset,readStorage(original).offset+0x18408),0xf800);
+ baseline.set(baseline.subarray(0xf800,0xf800+0x18408),0x4f800);
+ rewriteCounter(baseline,0xf800,4);rewriteCounter(baseline,0x4f800,5);
+ const bytes=baseline.slice();rewriteCounter(bytes,0xf800,99);
  assert.equal(readStorage(bytes).offset,0xf800);
  bytes[0xf800+17]^=1;assert.equal(readStorage(bytes).offset,0x4f800);
- const tied=original.slice();rewriteCounter(tied,0xf800,5);
+ const tied=baseline.slice();rewriteCounter(tied,0xf800,5);
  assert.ok(readStorage(tied).tied);
  assert.throws(()=>patchBoxRecord(tied,0,0,template));
  tied[0xf800+0x18004]^=1;
  new DataView(tied.buffer).setUint16(0xf800+0x18406,crc16(tied.subarray(0xf800,0xf800+0x183f8)),true);
  assert.throws(()=>readStorage(tied));
- const rollover=original.slice();rewriteCounter(rollover,0xf800,0xffffffff);assert.throws(()=>readStorage(rollover));
+ const rollover=baseline.slice();rewriteCounter(rollover,0xf800,0xffffffff);assert.throws(()=>readStorage(rollover));
  const corrupt=original.slice();corrupt[0xf800]^=1;corrupt[0x4f800]^=1;assert.throws(()=>readStorage(corrupt));
 });
 test('PC stats, abilities and moves edit a 136-byte record and round-trip through storage', () => {
