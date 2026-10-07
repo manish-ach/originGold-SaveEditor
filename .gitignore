@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.sav
+*.dsv
+*.nds
+.DS_Store

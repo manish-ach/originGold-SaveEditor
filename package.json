@@ -1,0 +1,17 @@
+{
+  "name": "origin-hg-save-editor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone save editor for Pokémon Origin HeartGold v4.0.3 (English).",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && node scripts/serve.mjs",
+    "gen:extras": "npm run build && node scripts/generate-extras.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "engines": { "node": ">=22" }
+}
